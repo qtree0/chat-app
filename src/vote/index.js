@@ -21,15 +21,16 @@ function startVote(io, socket, {
         return;
     }
 
+    const now = Date.now();
     currentVote = {
         question,
         options,
         allowMultiple,
         revealOnSubmit,
         startedBy: socket.id,
-        startTime: Date.now(),
+        startTime: now,
         duration,
-        submissions: {}, // socket.id -> [index]
+        submissions: {},
         isActive: true
     };
 
@@ -38,8 +39,8 @@ function startVote(io, socket, {
         options,
         allowMultiple,
         revealOnSubmit,
-        startTime: currentVote.startTime,
-        duration: currentVote.duration,
+        startTime: now,
+        duration,
         startedByName: socket.nickname || '익명'
     });
 
@@ -50,19 +51,26 @@ function startVote(io, socket, {
                     ${options.map((o, i) => `${i + 1}. ${o}`).join("<br/>")}`;
     io.emit('system_message', summary);
 
-    // countdown 메시지 (5초부터)
-    const interval = setInterval(() => {
-        if (!currentVote) return clearInterval(interval);
+    // 카운트다운 메시지 (5초부터)
+    const countdownSeconds = [5, 4, 3, 2, 1];
+    countdownSeconds.forEach(sec => {
+        setTimeout(() => {
+            if (currentVote?.isActive) {
+                if (sec === 5) {
+                    io.emit('system_message', `⏳ ${sec}초 남았습니다. 곧 마감됩니다!`);
+                } else {
+                    io.emit('system_message', `⏳ ${sec}...`);
+                }
+            }
+        }, duration - sec * 1000);
+    });
 
-        const remaining = Math.floor((currentVote.startTime + duration - Date.now()) / 1000);
-
-        if (remaining > 0 && remaining <= 5) io.emit('system_message', `${remaining}초 남았습니다. 곧 마감됩니다!`);
-
-        if (remaining <= 0) {
-            clearInterval(interval);
+    // 자동 종료
+    setTimeout(() => {
+        if (currentVote?.isActive) {
             endVote(io, { id: currentVote.startedBy });
         }
-    }, 1000);
+    }, duration);
 }
 
 function submitVote(io, socket, voteIndexes) {

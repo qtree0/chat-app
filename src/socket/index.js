@@ -5,7 +5,7 @@ const connectedUsers = new Map();
 const nicknameSet = new Set();
 
 export default function socketHandler(io, socket) {
-  // ===== ✅ 닉네임 등록 =====
+  // ===== 닉네임 등록 =====
   socket.on('set_nickname', (nickname) => {
     if (nicknameSet.has(nickname)) {
       socket.emit('nickname_error', { msg: '이미 사용 중인 닉네임입니다.', source: 'join' });
@@ -37,7 +37,7 @@ export default function socketHandler(io, socket) {
     voteHandler.sendCurrentVoteInfo(socket);
   });
 
-  // ===== ✅ 닉네임 변경 =====
+  // ===== 닉네임 변경 =====
   socket.on('change_nickname', (newNickname) => {
     const oldNickname = connectedUsers.get(socket.id);
     if (!oldNickname) return;
@@ -55,7 +55,7 @@ export default function socketHandler(io, socket) {
     io.emit('system_message', `${oldNickname}님이 닉네임을 ${newNickname}(으)로 변경했습니다.`);
   });
 
-  // ===== ✅ 일반 채팅 및 명령어 파싱 =====
+  // ===== 일반 채팅 및 명령어 파싱 =====
   socket.on('chat_message', (message) => {
     const nickname = connectedUsers.get(socket.id);
     if (!nickname) return;
@@ -91,17 +91,17 @@ export default function socketHandler(io, socket) {
     });
   });
 
-  // ===== ✅ 퀴즈 관련 추가 이벤트 =====
+  // ===== 퀴즈 관련 추가 이벤트 =====
   socket.on('end_quiz', () => {
     quizHandler.manualEndQuiz(io, socket);
   });
 
-  // ===== ✅ 투표 관련 이벤트 연결 =====
+  // ===== 투표 관련 이벤트 연결 =====
   socket.on('start_vote', (data) => voteHandler.startVote(io, socket, data));
   socket.on('submit_vote', (data) => voteHandler.submitVote(io, socket, data));
   socket.on('end_vote', () => voteHandler.endVote(io, socket));
 
-  // ===== ✅ 연결 종료 처리 =====
+  // ===== 연결 종료 처리 =====
   socket.on('disconnect', () => {
     const nickname = connectedUsers.get(socket.id);
     if (nickname) {
@@ -120,7 +120,7 @@ export default function socketHandler(io, socket) {
   });
 }
 
-// ===== ✅ 퀴즈 명령어 파싱 함수 =====
+// ===== 퀴즈 명령어 파싱 함수 =====
 function parseQuizCommand(message) {
   try {
     const questionMatch = message.match(/질문:\s*(.*?)\s*정답:/s);
