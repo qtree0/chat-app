@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>socket.io 채팅 테스트</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+
+    #chat {
+      margin-top: 20px;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+    }
+
+    .system {
+      color: gray;
+    }
+
+    .me {
+      color: blue;
+    }
+
+    .other {
+      color: black;
+    }
+
+    .vote-container {
+      display: none;
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      max-width: 400px;
+      background-color: #f9f9f9;
+    }
+
+    .vote-container input[type="text"] {
+      display: block;
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 5px;
+    }
+
+    .vote-container label {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .vote-container button {
+      margin-top: 10px;
+      padding: 6px 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>socket.io 채팅 테스트</h2>
+
+  <label>닉네임: <input id="nicknameInput" /></label>
+  <button onclick="connect()">연결하기</button>
+  <p id="nicknameError" style="color: red;"></p>
+
+  <div style="margin-top: 10px;">
+    현재 접속자 수: <span id="userCount">0</span>명
+  </div>
+
+  <div id="nicknameChangeArea" style="margin-top: 10px; display: none;">
+    <label>닉네임 변경: <input id="newNicknameInput" /></label>
+    <button onclick="changeNickname()">변경</button>
+  </div>
+
+  <div style="margin-top: 10px; display: none;" id="disconnectArea">
+    <button onclick="disconnect()">퇴장하기</button>
+  </div>
+
+  <div id="chat"></div>
+
+  <div style="margin-top: 10px;">
+    <input id="msg" placeholder="메시지 입력" style="width: 60%;" />
+    <button onclick="send()">전송</button>
+    <button onclick="insertQuizCommand()">퀴즈 템플릿 입력</button>
+  </div>
+
+  <div class="vote-container" id="voteCreateBox">
+    <h4>투표 작성하기</h4>
+    <input id="voteQuestion" type="text" placeholder="오늘 뭐 먹을까?" />
+    <input id="voteOption1" type="text" placeholder="선택지 1" />
+    <input id="voteOption2" type="text" placeholder="선택지 2" />
+    <input id="voteOption3" type="text" placeholder="선택지 3 (선택)" />
+    <input id="voteOption4" type="text" placeholder="선택지 4 (선택)" />
+    <label><input type="checkbox" id="allowMultiple" /> 복수 선택 허용</label>
+    <label><input type="checkbox" id="revealOnSubmit" /> 제출 즉시 결과 공개</label>
+    <label>제한시간(초): <input id="voteDuration" type="text" value="180" style="width: 60px;" /></label>
+    <button onclick="startVote()">투표 시작</button>
+    <button onclick="endVote()">투표 종료</button>
+  </div>
+
+  <div id="voteArea"></div>
+
+  <script>
+    let socket;
+
+    function connect() {
+      const nickname = document.getElementById('nicknameInput').value.trim();
+      if (!nickname) return alert("닉네임을 입력하세요!");
+      if (socket && socket.connected) return alert("이미 연결됨");
+
+      socket = io('http://localhost:3000');
+
+      socket.on('connect', () => {
+        socket.emit('set_nickname', nickname);
+
+        document.getElementById('voteCreateBox').style.display = 'block';
+        document.getElementById('nicknameChangeArea').style.display = 'block';
+        document.getElementById('disconnectArea').style.display = 'block';
+
+        socket.on('chat_message', (data) => {
+          const div = document.createElement('div');
+          div.innerHTML = `<span class="other">[${data.time}] <strong>${data.nickname}:</strong> ${data.message}</span>`;
+          document.getElementById('chat').appendChild(div);
+        });
+
+        socket.on('system_message', (msg) => {
+          const div = document.createElement('div');
+          div.className = 'system';
+          div.innerHTML = msg;
+          document.getElementById('chat').appendChild(div);
+        });
+
+        socket.on('user_count', (count) => {
+          document.getElementById('userCount').textContent = count;
+        });
+
+        socket.on('vote_started', ({ question, options, allowMultiple }) => {
+          renderVoteArea(question, options, allowMultiple);
+        });
+
+        socket.on('vote_info', ({ question, options, allowMultiple, remainingTime }) => {
+          renderVoteArea(question, options, allowMultiple);
+        });
+
+        socket.on('vote_ended', ({ question, result }) => {
+          const div = document.createElement('div');
+          div.className = 'system';
+          div.innerHTML = `투표 종료 - ${question}<br/>` + result.map(r => `${r.option}: ${r.count}표`).join('<br/>');
+          document.getElementById('chat').appendChild(div);
+          document.getElementById('voteArea').innerHTML = '';
+        });
+
+        socket.on('quiz_error', (msg) => {
+          alert("퀴즈 오류: " + msg);
+        });
+
+        socket.on('vote_error', (msg) => {
+          alert("투표 오류: " + msg);
+        });
+      });
+
+      socket.on('nickname_error', (error) => {
+        document.getElementById('nicknameError').textContent = error.msg;
+      });
+    }
+
+    function send() {
+      const msg = document.getElementById('msg').value.trim();
+      if (msg && socket) {
+        socket.emit('chat_message', msg);
+        document.getElementById('msg').value = '';
+      }
+    }
+
+    function insertQuizCommand() {
+      document.getElementById('msg').value = "/quiz 질문:  정답:  제한시간: 180";
+      document.getElementById('msg').focus();
+    }
+
+    function changeNickname() {
+      const newNickname = document.getElementById('newNicknameInput').value.trim();
+      if (!newNickname) return alert("새 닉네임을 입력하세요.");
+      document.getElementById('nicknameError').textContent = '';
+      socket.emit('change_nickname', newNickname);
+    }
+
+    function disconnect() {
+      if (socket && socket.connected) {
+        socket.disconnect();
+        socket = null;
+
+        const div = document.createElement('div');
+        div.className = 'system';
+        div.textContent = '연결을 종료했습니다.';
+        document.getElementById('chat').appendChild(div);
+
+        document.getElementById('nicknameChangeArea').style.display = 'none';
+        document.getElementById('disconnectArea').style.display = 'none';
+        document.getElementById('voteCreateBox').style.display = 'none';
+        document.getElementById('voteArea').innerHTML = '';
+      }
+    }
+
+    function startVote() {
+      const question = document.getElementById('voteQuestion').value.trim();
+      const options = [
+        document.getElementById('voteOption1').value.trim(),
+        document.getElementById('voteOption2').value.trim(),
+        document.getElementById('voteOption3').value.trim(),
+        document.getElementById('voteOption4').value.trim()
+      ].filter(opt => opt);
+
+      if (!question || options.length < 2) {
+        alert("질문과 최소 2개의 옵션이 필요합니다.");
+        return;
+      }
+
+      const allowMultiple = document.getElementById('allowMultiple').checked;
+      const revealOnSubmit = document.getElementById('revealOnSubmit').checked;
+      const duration = parseInt(document.getElementById('voteDuration').value.trim()) * 1000 || 180000;
+
+      socket.emit('start_vote', {
+        question,
+        options,
+        allowMultiple,
+        revealOnSubmit,
+        duration
+      });
+    }
+
+    function endVote() {
+      if (socket && socket.connected) {
+        socket.emit('end_vote');
+      }
+    }
+
+    function renderVoteArea(question, options, allowMultiple) {
+      const container = document.getElementById('voteArea');
+      container.innerHTML = `<h4>${question}</h4>`;
+
+      options.forEach((opt, idx) => {
+        const line = document.createElement('div');
+        const input = document.createElement('input');
+        input.type = allowMultiple ? 'checkbox' : 'radio';
+        input.name = 'voteOption';
+        input.value = idx;
+        line.appendChild(input);
+
+        const label = document.createElement('label');
+        label.textContent = opt;
+        label.style.marginLeft = '5px';
+        line.appendChild(label);
+
+        container.appendChild(line);
+      });
+
+      const btn = document.createElement('button');
+      btn.textContent = '투표 제출';
+      btn.onclick = submitVote;
+      container.appendChild(btn);
+    }
+
+    function submitVote() {
+      const selected = Array.from(document.querySelectorAll('#voteArea input[name="voteOption"]'))
+        .filter(i => i.checked)
+        .map(i => parseInt(i.value));
+
+      if (!selected.length) return alert("선택지를 선택해주세요.");
+      socket.emit('submit_vote', selected.length === 1 ? selected[0] : selected);
+    }
+  </script>
+</body>
+
+</html>
