@@ -64,3 +64,9 @@
 
 - 프론트엔드 없이 실시간 채팅, 퀴즈, 투표 기능을 웹에서 테스트 가능하도록 구현된 HTML 테스트 페이지
 - Socket.IO 클라이언트를 통해 메시지 송수신 및 이벤트 트리거 가능
+
+# 배포 방식
+
+- EC2, Docker Container 활용
+  - Express 서버를 이미지로 만들고, Elastic Container Repository (AWS)에 push
+  - 해당 이미지를 EC2 ubuntu에서 활용하여 서버 동작
