@@ -19,6 +19,7 @@ export default function socketHandler(io, socket) {
 
     io.emit('system_message', `${nickname}님이 입장했습니다.`);
     io.emit('user_count', connectedUsers.size);
+    broadcastUserList(io);
 
     // 퀴즈 진행 중이면 입장자에게 안내
     if (quizHandler.currentQuiz?.isActive) {
@@ -53,6 +54,7 @@ export default function socketHandler(io, socket) {
     socket.nickname = newNickname;
 
     io.emit('system_message', `${oldNickname}님이 닉네임을 ${newNickname}(으)로 변경했습니다.`);
+    broadcastUserList(io);
   });
 
   // ===== 일반 채팅 및 명령어 파싱 =====
@@ -116,6 +118,7 @@ export default function socketHandler(io, socket) {
 
       io.emit('system_message', `${nickname}님이 퇴장했습니다.`);
       io.emit('user_count', connectedUsers.size);
+      broadcastUserList(io);
     }
   });
 }
@@ -139,4 +142,10 @@ function parseQuizCommand(message) {
   } catch {
     return null;
   }
+}
+
+// ===== 접속자 목록 브로드캐스트 함수 =====
+function broadcastUserList(io) {
+  const nicknames = Array.from(nicknameSet).sort();
+  io.emit('user_list', nicknames);
 }

@@ -55,6 +55,20 @@
       margin-top: 10px;
       padding: 6px 12px;
     }
+
+    #userListContainer {
+      margin-top: 20px;
+    }
+
+    #userList {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+
+    #userList li {
+      padding: 4px 0;
+    }
   </style>
 </head>
 
@@ -67,6 +81,11 @@
 
   <div style="margin-top: 10px;">
     현재 접속자 수: <span id="userCount">0</span>명
+  </div>
+
+  <div id="userListContainer">
+    <strong>접속자 목록:</strong>
+    <ul id="userList"></ul>
   </div>
 
   <div id="nicknameChangeArea" style="margin-top: 10px; display: none;">
@@ -136,6 +155,10 @@
           document.getElementById('userCount').textContent = count;
         });
 
+        socket.on('user_list', (nicknames) => {
+          renderUserList(nicknames);
+        });
+
         socket.on('vote_started', ({ question, options, allowMultiple }) => {
           renderVoteArea(question, options, allowMultiple);
         });
@@ -163,6 +186,16 @@
 
       socket.on('nickname_error', (error) => {
         document.getElementById('nicknameError').textContent = error.msg;
+      });
+    }
+
+    function renderUserList(nicknames) {
+      const list = document.getElementById('userList');
+      list.innerHTML = '';
+      nicknames.forEach(name => {
+        const li = document.createElement('li');
+        li.textContent = name;
+        list.appendChild(li);
       });
     }
 
@@ -200,6 +233,7 @@
         document.getElementById('disconnectArea').style.display = 'none';
         document.getElementById('voteCreateBox').style.display = 'none';
         document.getElementById('voteArea').innerHTML = '';
+        document.getElementById('userList').innerHTML = '';
       }
     }
 
