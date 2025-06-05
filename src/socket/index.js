@@ -1,5 +1,6 @@
 import * as quizHandler from '../quiz/index.js';
 import * as voteHandler from '../vote/index.js';
+import logger from "../utils/logger.js";
 
 const connectedUsers = new Map();
 const nicknameSet = new Set();
@@ -10,6 +11,7 @@ export default function socketHandler(io, socket) {
     if (nicknameSet.has(nickname)) {
       socket.emit('nickname_error', { msg: '이미 사용 중인 닉네임입니다.', source: 'join' });
       socket.disconnect(true);
+      logger.warn(`중복된 닉네임 시도 ${nickname} - ${socket.id}`);
       return;
     }
 
@@ -19,6 +21,8 @@ export default function socketHandler(io, socket) {
 
     io.emit('system_message', `${nickname}님이 입장했습니다.`);
     io.emit('user_count', connectedUsers.size);
+
+    logger.info(`유저 입장: ${nickname} - ${socket.id}`);
     broadcastUserList(io);
 
     // 퀴즈 진행 중이면 입장자에게 안내
@@ -45,6 +49,7 @@ export default function socketHandler(io, socket) {
 
     if (nicknameSet.has(newNickname)) {
       socket.emit('nickname_error', { msg: '이미 사용 중인 닉네임입니다.', source: 'change' });
+      logger.warn(`중복된 닉네임 시도 ${oldNickname} - ${socket.id}`);
       return;
     }
 
@@ -52,6 +57,7 @@ export default function socketHandler(io, socket) {
     nicknameSet.delete(oldNickname);
     nicknameSet.add(newNickname);
     socket.nickname = newNickname;
+    logger.info(`닉네임 변경 ${oldNickname} => ${newNickname} = ${socket.id}`);
 
     io.emit('system_message', `${oldNickname}님이 닉네임을 ${newNickname}(으)로 변경했습니다.`);
     broadcastUserList(io);
@@ -60,16 +66,22 @@ export default function socketHandler(io, socket) {
   // ===== 일반 채팅 및 명령어 파싱 =====
   socket.on('chat_message', (message) => {
     const nickname = connectedUsers.get(socket.id);
-    if (!nickname) return;
+    if (!nickname) {
+      logger.warn('닉네임 설정 없는 메시지 전송')
+      return;
+    }
 
     // /quiz 명령어 처리
     if (message.startsWith('/quiz')) {
       const parsed = parseQuizCommand(message);
       if (!parsed) {
         socket.emit('quiz_error', '형식 오류: /quiz 질문: ... 정답: ... 제한시간: ...');
+        logger.warn(`${nickname} - ${socket.id} : 퀴즈 파싱 에러`)
         return;
       }
+      logger.info(`${nickname} - ${socket.id} : 퀴즈 시작 시도`)
       quizHandler.startQuiz(io, socket, parsed, nickname);
+
       return;
     }
 
@@ -77,6 +89,7 @@ export default function socketHandler(io, socket) {
     if (message.startsWith('/answer')) {
       const answer = message.slice(8).trim();
       quizHandler.submitAnswer(socket, answer);
+      logger.info(`${nickname} - ${socket.id} : 정답 제출`)
       return;
     }
 
@@ -96,6 +109,7 @@ export default function socketHandler(io, socket) {
   // ===== 퀴즈 관련 추가 이벤트 =====
   socket.on('end_quiz', () => {
     quizHandler.manualEndQuiz(io, socket);
+    logger.info(`퀴즈 종료`)
   });
 
   // ===== 투표 관련 이벤트 연결 =====
@@ -109,9 +123,10 @@ export default function socketHandler(io, socket) {
     if (nickname) {
       connectedUsers.delete(socket.id);
       nicknameSet.delete(nickname);
-
+      logger.info(`${nickname} - ${socket.id} : 웹소켓 연결 해제`)
       if (quizHandler.currentQuiz?.startedBy === socket.id) {
         quizHandler.endQuiz(io);
+        logger.info(`${nickname} - ${socket.id} : 퇴장으로 인한 퀴즈 종료`)
       }
 
       voteHandler.handleDisconnect(socket);

@@ -1,13 +1,18 @@
 import { currentVote } from '../vote/index.js';
+import logger from '../utils/logger.js';
+
 let currentQuiz = null;
+
 
 function startQuiz(io, socket, { question, answer, duration }, nickname) {
   if (currentQuiz?.isActive) {
     socket.emit('quiz_error', '다른 퀴즈가 진행 중입니다.');
+    logger.warn('이미 진행되고 있는 퀴즈가 존재함.')
     return;
   }
   if (currentVote?.isActive) {
     socket.emit('quiz_error', '투표가 진행 중일 때는 퀴즈를 시작할 수 없습니다.');
+    logger.warn('이미 진행되고 있는 투표로 퀴즈 진행이 제한.')
     return;
   }
 
@@ -37,6 +42,7 @@ function startQuiz(io, socket, { question, answer, duration }, nickname) {
   const countdownSeconds = [5, 4, 3, 2, 1];
   countdownSeconds.forEach(sec => {
     setTimeout(() => {
+      logger.info('카운트다운 시작')
       if (currentQuiz?.isActive) {
         if (sec === 5) {
           io.emit('system_message', `⏱ ${sec}초 남았습니다. 정답을 제출하세요!`);
@@ -50,6 +56,7 @@ function startQuiz(io, socket, { question, answer, duration }, nickname) {
   // 퀴즈 자동 종료
   setTimeout(() => {
     if (currentQuiz?.isActive) {
+      logger.info('퀴즈 종료')
       endQuiz(io);
     }
   }, durationMs);
@@ -58,11 +65,13 @@ function startQuiz(io, socket, { question, answer, duration }, nickname) {
 function submitAnswer(socket, answer) {
   if (!currentQuiz?.isActive) {
     socket.emit('quiz_error', '현재 진행 중인 퀴즈가 없습니다.');
+    logger.warn('사용자의 잘못된 정답입력. (현재 진행중인 퀴즈 없음)')
     return;
   }
 
   if (!answer) {
     socket.emit('quiz_error', '정답을 입력하세요. (/answer 정답)');
+    logger.warn('사용자의 잘못된 정답입력.')
     return;
   }
 
@@ -70,12 +79,14 @@ function submitAnswer(socket, answer) {
   currentQuiz.nicknames[socket.id] = currentQuiz.nicknames[socket.id] || socket.nickname || '익명';
 
   socket.emit('answer_submitted', answer); // 사용자에게 본인의 정답 알림
+  logger.info(`사용자의 정답 입력 - ${answer}`)
 }
 
 function manualEndQuiz(io, socket) {
   if (!currentQuiz?.isActive) return;
   if (socket.id !== currentQuiz.startedBy) {
     socket.emit('quiz_error', '퀴즈를 종료할 권한이 없습니다.');
+    logger.info(`${socket.id} - 퀴즈 종료 권한 없음`)
     return;
   }
   endQuiz(io);
