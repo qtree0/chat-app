@@ -25,7 +25,7 @@ export default function socketHandler(io, socket) {
     logger.info(`유저 입장: ${nickname} - ${socket.id}`);
     broadcastUserList(io);
 
-    // 퀴즈 진행 중이면 입장자에게 안내
+    // 퀴즈 안내
     if (quizHandler.currentQuiz?.isActive) {
       const quiz = quizHandler.currentQuiz;
       const remaining = Math.max(0, Math.floor((quiz.startTime + quiz.duration - Date.now()) / 1000));
@@ -38,7 +38,7 @@ export default function socketHandler(io, socket) {
       });
     }
 
-    // 투표 진행 중이면 안내
+    // 투표 안내
     voteHandler.sendCurrentVoteInfo(socket);
   });
 
@@ -63,42 +63,76 @@ export default function socketHandler(io, socket) {
     broadcastUserList(io);
   });
 
-  // ===== 일반 채팅 및 명령어 파싱 =====
+  // ===== 채팅 처리 =====
   socket.on('chat_message', (message) => {
     const nickname = connectedUsers.get(socket.id);
     if (!nickname) {
-      logger.warn('닉네임 설정 없는 메시지 전송')
+      logger.warn('닉네임 설정 없는 메시지 전송');
       return;
     }
 
-    // /quiz 명령어 처리
-    if (message.startsWith('/quiz')) {
-      const parsed = parseQuizCommand(message);
-      if (!parsed) {
-        socket.emit('quiz_error', '형식 오류: /quiz 질문: ... 정답: ... 제한시간: ...');
-        logger.warn(`${nickname} - ${socket.id} : 퀴즈 파싱 에러`)
-        return;
-      }
-      logger.info(`${nickname} - ${socket.id} : 퀴즈 시작 시도`)
-      quizHandler.startQuiz(io, socket, parsed, nickname);
-
-      return;
-    }
-
-    // /answer 정답 제출
-    if (message.startsWith('/answer')) {
-      const answer = message.slice(8).trim();
-      quizHandler.submitAnswer(socket, answer);
-      logger.info(`${nickname} - ${socket.id} : 정답 제출`)
-      return;
-    }
-
-    // 일반 채팅
     const time = new Date().toLocaleTimeString('ko-KR', {
       hour: '2-digit',
       minute: '2-digit'
     });
 
+    // ===== 퀴즈 명령어 =====
+    if (message.startsWith('/quiz')) {
+      const parsed = parseQuizCommand(message);
+      if (!parsed) {
+        socket.emit('quiz_error', '형식 오류: /quiz 질문: ... 정답: ... 제한시간: ...');
+        logger.warn(`${nickname} - ${socket.id} : 퀴즈 파싱 에러`);
+        return;
+      }
+      logger.info(`${nickname} - ${socket.id} : 퀴즈 시작 시도`);
+      quizHandler.startQuiz(io, socket, parsed, nickname);
+      return;
+    }
+
+    // ===== 정답 제출 =====
+    if (message.startsWith('/answer')) {
+      const answer = message.slice(8).trim();
+      quizHandler.submitAnswer(socket, answer);
+      logger.info(`${nickname} - ${socket.id} : 정답 제출`);
+      return;
+    }
+
+    // ===== 귓속말 처리 =====
+    if (message.startsWith('@')) {
+      const spaceIndex = message.indexOf(' ');
+      if (spaceIndex === -1) {
+        socket.emit('chat_error', '형식 오류: @상대닉네임 메시지');
+        return;
+      }
+
+      const targetName = message.slice(1, spaceIndex);
+      const content = message.slice(spaceIndex + 1).trim();
+      const targetSocketId = getSocketIdByNickname(targetName);
+
+      if (!targetSocketId) {
+        socket.emit('chat_error', `존재하지 않는 사용자: ${targetName}`);
+        return;
+      }
+
+      socket.emit('private_message', {
+        from: nickname,
+        to: targetName,
+        message: content,
+        time
+      });
+
+      io.to(targetSocketId).emit('private_message', {
+        from: nickname,
+        to: targetName,
+        message: content,
+        time
+      });
+
+      logger.info(`${nickname} → ${targetName} : (귓속말) ${content}`);
+      return;
+    }
+
+    // ===== 일반 채팅 =====
     io.emit('chat_message', {
       nickname,
       message,
@@ -106,27 +140,28 @@ export default function socketHandler(io, socket) {
     });
   });
 
-  // ===== 퀴즈 관련 추가 이벤트 =====
+  // ===== 퀴즈 종료 =====
   socket.on('end_quiz', () => {
     quizHandler.manualEndQuiz(io, socket);
-    logger.info(`퀴즈 종료`)
+    logger.info(`퀴즈 종료`);
   });
 
-  // ===== 투표 관련 이벤트 연결 =====
+  // ===== 투표 관련 이벤트 =====
   socket.on('start_vote', (data) => voteHandler.startVote(io, socket, data));
   socket.on('submit_vote', (data) => voteHandler.submitVote(io, socket, data));
   socket.on('end_vote', () => voteHandler.endVote(io, socket));
 
-  // ===== 연결 종료 처리 =====
+  // ===== 연결 종료 =====
   socket.on('disconnect', () => {
     const nickname = connectedUsers.get(socket.id);
     if (nickname) {
       connectedUsers.delete(socket.id);
       nicknameSet.delete(nickname);
-      logger.info(`${nickname} - ${socket.id} : 웹소켓 연결 해제`)
+      logger.info(`${nickname} - ${socket.id} : 웹소켓 연결 해제`);
+
       if (quizHandler.currentQuiz?.startedBy === socket.id) {
         quizHandler.endQuiz(io);
-        logger.info(`${nickname} - ${socket.id} : 퇴장으로 인한 퀴즈 종료`)
+        logger.info(`${nickname} - ${socket.id} : 퇴장으로 인한 퀴즈 종료`);
       }
 
       voteHandler.handleDisconnect(socket);
@@ -138,7 +173,7 @@ export default function socketHandler(io, socket) {
   });
 }
 
-// ===== 퀴즈 명령어 파싱 함수 =====
+// ===== 퀴즈 명령어 파싱 =====
 function parseQuizCommand(message) {
   try {
     const questionMatch = message.match(/질문:\s*(.*?)\s*정답:/s);
@@ -159,7 +194,15 @@ function parseQuizCommand(message) {
   }
 }
 
-// ===== 접속자 목록 브로드캐스트 함수 =====
+// ===== 닉네임으로 socket.id 찾기 =====
+function getSocketIdByNickname(nickname) {
+  for (const [socketId, name] of connectedUsers.entries()) {
+    if (name === nickname) return socketId;
+  }
+  return null;
+}
+
+// ===== 접속자 목록 브로드캐스트 =====
 function broadcastUserList(io) {
   const nicknames = Array.from(nicknameSet).sort();
   io.emit('user_list', nicknames);
