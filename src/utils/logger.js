@@ -1,17 +1,51 @@
-// 서버 내 예외 상황 발생 시 로그 기록을 위한 모듈 (향후 필요 시 import하여 사용 가능)
+const winston = require('winston');
+const winstonDaily = require('winston-daily-rotate-file');
+const process = require('process');
 
-export function logAnonymousEvent(context, socketId) {
-  const timestamp = new Date().toISOString();
-  console.warn(`[익명 fallback] [${timestamp}] ${context} - socket.id: ${socketId}`);
+const { combine, timestamp, label, printf } = winston.format;
+
+const logDirectory = `${process.cwd()}/logs/`;
+const logFormat =printf(({level, message, label, timestamp}) => {
+  return `${timestamp} [${label} ${level}: ${message}]`
+})
+
+const logger = winston.createLogger({
+  format: combine(
+    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    label({ label: 'chat-app winston logger' }),
+    logFormat,
+  ),
+
+  transports: [
+    new winstonDaily({
+      level: 'info',
+      datePattern: 'YYYY-MM-DD',
+      dirname: logDirectory,
+      filename: `%DATE%.log`,
+      maxFiles: 30,
+      zippedArchive: true,
+    }),
+
+    new winstonDaily({
+      level: 'error',
+      datePattern: 'YYYY-MM-DD',
+      dirname: logDirectory,
+      filename: `%DATE%.exception.log`,
+      maxFiles: 30,
+      zippedArchive: true,
+    })
+  ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(), // 색깔 넣어서 출력
+        winston.format.simple(), // `${info.level}: ${info.message} JSON.stringify({ ...rest })` 포맷으로 출력
+      ),
+    }),
+  );
 }
 
-export function logInfo(message) {
-  const timestamp = new Date().toISOString();
-  console.log(`[INFO] [${timestamp}] ${message}`);
-}
-
-export function logError(message, err) {
-  const timestamp = new Date().toISOString();
-  console.error(`[ERROR] [${timestamp}] ${message}`);
-  if (err) console.error(err);
-}
+module.exports = logger;

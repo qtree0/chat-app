@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import socketHandler from './socket/index.js';
+import logger from './utils/logger.js';
 
 // .env 설정 로드
 dotenv.config();
@@ -37,5 +38,6 @@ server.listen(PORT, '0.0.0.0',  () => {
 });
 
 app.get('/', (req, res) => {
+  logger.info('EC2 - CONNECTED! (3000번 포트 GET 요청)')
   return res.send("EC2 - CONNECTED!")
 })
