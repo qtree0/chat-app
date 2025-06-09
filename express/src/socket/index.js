@@ -1,6 +1,7 @@
 import * as quizHandler from '../quiz/index.js';
 import * as voteHandler from '../vote/index.js';
 import logger from "../utils/logger.js";
+import {connectedSocketsGauge} from "../metrics/metrics.js";
 
 const connectedUsers = new Map();
 const nicknameSet = new Set();
@@ -153,6 +154,7 @@ export default function socketHandler(io, socket) {
 
   // ===== 연결 종료 =====
   socket.on('disconnect', () => {
+    connectedSocketsGauge.dec();
     const nickname = connectedUsers.get(socket.id);
     if (nickname) {
       connectedUsers.delete(socket.id);
